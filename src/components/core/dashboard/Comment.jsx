@@ -1,12 +1,17 @@
 import React from 'react';
 import { Trash2, Download } from 'lucide-react';
 
-export default function Comment({ comment, currentUserId = null }) {
+export default function Comment({ onDelete, comment, currentUserId = null })
+{
   if (!comment) return null;
 
-  const user = comment.user || comment.author || { userId: null, userName: comment.userName || 'Unknown' };
+  const user = comment.user ?? 'Unknown' ;
+  console.log("COMMENT =", comment);
+  console.log("USER OBJ =", user);
+  console.log("CURRENT USER =", currentUserId);
 
-  const formatDate = (d) => {
+  const formatDate = (d) =>
+  {
     if (!d) return '';
     const date = d instanceof Date ? d : new Date(d);
     if (isNaN(date.getTime())) return '';
@@ -14,22 +19,25 @@ export default function Comment({ comment, currentUserId = null }) {
   };
 
   // normalize file info - backend may return different shapes
-  const fileObj = (() => {
+  const fileObj = (() =>
+  {
     const f = comment.file;
     if (!f) return null;
-    if (typeof f === 'string') return { url: f, name: f.split('/').pop() };
-    // common fields: url, fileUrl, filePath, path, downloadUrl
+
     return {
-      url: f.url ?? f.fileUrl ?? f.filePath ?? f.path ?? f.downloadUrl ?? null,
-      name: f.fileName ?? f.name ?? (f.url ? f.url.split('/').pop() : null),
+      url: f.fileURL ?? f.fileUrl ?? f.url ?? null,   // add fileURL support
+      name: f.fileName ?? f.name ?? null,
       id: f.fileId ?? f.id ?? null,
     };
   })();
 
+
+  console.log("file in comment: " + fileObj);
+
   return (
     <div className="flex gap-3 p-2 border rounded">
       <div className="w-10 h-10 flex items-center justify-center bg-gray-200 rounded-full text-sm font-semibold text-gray-700">
-        {user.userName ? user.userName.split(' ').map(s=>s[0]).slice(0,2).join('') : '?'}
+        {user.userName ? user.userName.split(' ').map(s => s[0]).slice(0, 2).join('') : '?'}
       </div>
 
       <div className="flex-1">
@@ -52,7 +60,7 @@ export default function Comment({ comment, currentUserId = null }) {
         {/* optional actions - delete if authored by current user (UI only) */}
         {currentUserId && user.userId && Number(currentUserId) === Number(user.userId) && (
           <div className="mt-2 text-xs text-gray-500 flex items-center gap-3">
-            <button className="flex items-center gap-1 text-red-600 hover:underline">
+            <button onClick={() => onDelete(comment.commentId)} className="flex items-center gap-1 text-red-600 hover:underline">
               <Trash2 className="w-4 h-4" /> Delete
             </button>
           </div>

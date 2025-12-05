@@ -1,11 +1,13 @@
 import React from 'react';
 import { useSelector } from 'react-redux';
 import { Mail, Phone, MapPin, Calendar, Briefcase, Award } from 'lucide-react';
+import EditProfile from './EditProfile';
 
-const MyProfile = () => {
+const MyProfile = () =>
+{
   const { userData, userRole } = useSelector((state) => state.auth || {});
-
-  const roleLabel = userRole === 1 ? 'Project Manager' : userRole === 2 ? 'Team Member' : 'User';
+  console.log("User Data in MyProfile:", userData);
+  const roleLabel = userRole === 1 ? 'Project Manager' : userRole === 0 ? 'Team Member' : 'User';
 
   // Dummy stats
   const stats = [
@@ -37,7 +39,9 @@ const MyProfile = () => {
               <div>
                 <h1 className="text-3xl font-bold text-gray-900 mb-2">
                   {userData?.userName || 'User'}
+
                 </h1>
+                <h2 className='font-bold text-gray-900 mb-2'>User Id: {userData?.userId || 'User'}</h2>
                 <p className="text-lg text-gray-600 mb-3">{roleLabel}</p>
                 <div className="flex items-center gap-4 text-sm text-gray-500">
                   <div className="flex items-center gap-1">
@@ -46,14 +50,18 @@ const MyProfile = () => {
                   </div>
                 </div>
               </div>
+
             </div>
-          
+            <div className='flex-col gap-2 flex'>
+              <EditProfile />
+            </div>
           </div>
         </div>
 
         {/* Stats Section */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          {stats.map((stat) => {
+          {stats.map((stat) =>
+          {
             const IconComponent = stat.icon;
             return (
               <div key={stat.label} className="bg-white rounded-lg shadow-md p-6 border border-gray-200">
@@ -77,8 +85,8 @@ const MyProfile = () => {
             <div className="bg-white rounded-lg shadow-md p-6 border border-gray-200">
               <h2 className="text-xl font-bold text-gray-900 mb-4">About</h2>
               <p className="text-gray-700 leading-relaxed">
-                Experienced project manager with a passion for delivering high-quality software solutions. 
-                Skilled in team collaboration, agile methodologies, and stakeholder management. Currently leading 
+                Experienced project manager with a passion for delivering high-quality software solutions.
+                Skilled in team collaboration, agile methodologies, and stakeholder management. Currently leading
                 multiple cross-functional projects with a focus on innovation and excellence.
               </p>
             </div>

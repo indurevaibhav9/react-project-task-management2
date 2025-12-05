@@ -1,16 +1,16 @@
-// UpdateProjectModal.jsx
 import React, { useState, useEffect, useRef } from "react";
-import { X } from 'lucide-react';
+import { X } from "lucide-react";
 import { useSelector } from "react-redux";
 import { getAllUser } from "../../../services/operations/authAPI";
-import { projectAPI } from "../../../services/apis";
 import { apiConnector } from "../../../services/apiConnector";
+import { projectAPI } from "../../../services/apis";
 
 const { UPDATE_PROJECT } = projectAPI;
 
-export default function UpdateProjectModal({ isOpen, onClose, onUpdateProject, project, availableUsers = [] }) {
+export default function UpdateProjectModal({ isOpen, onClose, onUpdateProject, project })
+{
   const { token } = useSelector((state) => state.auth || {});
-  
+
   const [form, setForm] = useState({
     projectName: "",
     projectDescription: "",
@@ -25,480 +25,278 @@ export default function UpdateProjectModal({ isOpen, onClose, onUpdateProject, p
   const [userInput, setUserInput] = useState("");
   const [filteredUsers, setFilteredUsers] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const firstRenderRef = useRef(true);
 
-  // Debug: Log form state changes
-  useEffect(() => {
-    console.log('Form state changed:', form);
-  }, [form]);
+  // Fetch all users & set project data
+  useEffect(() =>
+  {
+    if (!isOpen) return;
 
-  useEffect(() => {
-    if (isOpen) {
-      setIsLoading(true);
-      // Fetch all users first
-      (async () => {
-        try {
-          const resp = await getAllUser({ token })();
-          let raw = [];
-          if (Array.isArray(resp)) {
-            raw = resp;
-          } else if (resp && Array.isArray(resp.data)) {
-            raw = resp.data;
-          } else if (resp && Array.isArray(resp.users)) {
-            raw = resp.users;
-          }
+    (async () =>
+    {
+      try
+      {
+        const usersResp = await getAllUser({ token })();
+        const raw = usersResp?.data || usersResp || [];
 
-          const normalized = raw.map(u => {
-            const userId = u.userId ?? u.id ?? u._id ?? u.userID ?? u.Id;
-            const userName = u.userName ?? u.name ?? `${u.firstName ?? ''} ${u.lastName ?? ''}`.trim() ?? u.fullName;
-            const userEmail = u.userEmail ?? u.email ?? u.userEmailAddress;
-            return { userId, userName: userName || 'Unknown', userEmail: userEmail || '' };
-          });
-          console.log('Normalized users for update modal:', normalized);
-          setAllUsers(normalized);
+        const normalized = raw.map(u => ({
+          userId: u.userId ?? u.id ?? u._id,
+          userName: u.userName ?? u.name ?? `${u.firstName || ""} ${u.lastName || ""}`,
+          userEmail: u.userEmail ?? u.email ?? ""
+        }));
 
-          // After fetching users, populate form with project data
-          if (project) {
-            const formatDate = (dateString) => {
-              if (!dateString) return "";
-              const date = new Date(dateString);
-              return date.toISOString().split('T')[0];
+        setAllUsers(normalized);
+
+        if (project)
+        {
+          const formatDate = (d) => (d ? new Date(d).toISOString().split("T")[0] : "");
+
+          const mappedTeam = (project.teamMembers || []).map(m =>
+          {
+            const found = normalized.find(u => String(u.userId) === String(m.userId));
+            return found || {
+              userId: m.userId,
+              userName: m.userName,
+              userEmail: m.userEmail
             };
+          });
 
-            // Normalize team members from project
-            let normalizedTeamMembers = [];
-            if (project.teamMembers && Array.isArray(project.teamMembers)) {
-              normalizedTeamMembers = project.teamMembers.map(member => {
-                // Try to match with fetched users for complete data
-                const matchedUser = normalized.find(u => 
-                  String(u.userId) === String(member.userId || member.id || member._id)
-                );
-                
-                if (matchedUser) {
-                  return matchedUser;
-                }
-                
-                // Fallback to member data
-                return {
-                  userId: member.userId ?? member.id ?? member._id,
-                  userName: member.userName ?? member.name ?? member.fullName ?? 'Unknown',
-                  userEmail: member.userEmail ?? member.email ?? ''
-                };
-              });
-            }
-
-            console.log('Setting form with team members:', normalizedTeamMembers);
-            console.log('Project data:', {
-              projectName: project.projectName,
-              projectDescription: project.projectDescription,
-              projectStartDate: project.projectStartDate,
-              projectEndDate: project.projectEndDate
-            });
-
-            const formattedStartDate = formatDate(project.projectStartDate);
-            const formattedEndDate = formatDate(project.projectEndDate);
-
-            console.log('Formatted dates:', {
-              startDate: formattedStartDate,
-              endDate: formattedEndDate
-            });
-
-            setForm({
-              projectName: project.projectName || "",
-              projectDescription: project.projectDescription || "",
-              projectStartDate: formattedStartDate,
-              projectEndDate: formattedEndDate,
-              file: null,
-              teamMembers: normalizedTeamMembers
-            });
-
-            // Small delay to ensure state is set
-            setTimeout(() => {
-              setIsLoading(false);
-            }, 100);
-          } else {
-            setIsLoading(false);
-          }
-        } catch (err) {
-          console.error('Failed to fetch all users for update modal', err);
-          setIsLoading(false);
+          setForm({
+            projectName: project.projectName || "",
+            projectDescription: project.projectDescription || "",
+            projectStartDate: formatDate(project.projectStartDate),
+            projectEndDate: formatDate(project.projectEndDate),
+            file: null,
+            teamMembers: mappedTeam
+          });
         }
-      })();
+      } catch (e)
+      {
+        console.log("Error fetching users", e);
+      }
+    })();
 
+    return () =>
+    {
       setErrors({});
       setFilePreview(null);
       setUserInput("");
       setFilteredUsers([]);
-    }
-  }, [isOpen, project, token]);
+    };
+  }, [isOpen]);
 
-  const validate = () => {
-    const e = {};
-    if (!form.projectName.trim()) e.projectName = "Title is required";
-    if (!form.projectDescription.trim()) e.projectDescription = "Description is required";
-    if (!form.projectStartDate) e.projectStartDate = "Start date is required";
-    if (!form.projectEndDate) e.projectEndDate = "End date is required";
-    if (form.projectStartDate && form.projectEndDate) {
-      if (new Date(form.projectEndDate) < new Date(form.projectStartDate))
-        e.projectEndDate = "End date must be after start date";
-    }
-    setErrors(e);
-    return Object.keys(e).length === 0;
+  // Input handler
+  const handleChange = (e) =>
+  {
+    setForm({ ...form, [e.target.name]: e.target.value });
+    setErrors({ ...errors, [e.target.name]: null });
   };
 
-  const handleFileChange = (e) => {
-    const f = e.target.files[0];
-    setForm(prev => ({ ...prev, file: f }));
-    setErrors(prev => ({ ...prev, file: undefined }));
-    if (f && f.type.startsWith("image/")) {
-      const url = URL.createObjectURL(f);
+  // File handler
+  const handleFileChange = (e) =>
+  {
+    const file = e.target.files[0];
+    setForm({ ...form, file });
+
+    if (file && file.type.startsWith("image/"))
+    {
+      const url = URL.createObjectURL(file);
       setFilePreview(url);
-      if (!firstRenderRef.current) {
-        return () => URL.revokeObjectURL(url);
-      }
-    } else {
+    } else
+    {
       setFilePreview(null);
     }
   };
 
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setForm(prev => ({ ...prev, [name]: value }));
-    setErrors(prev => ({ ...prev, [name]: undefined }));
-  };
-
-  const handleUserInputChange = (e) => {
+  // Search team members
+  const handleUserInputChange = (e) =>
+  {
     const value = e.target.value;
     setUserInput(value);
-    
-    if (value.includes('@')) {
-      const query = value.split('@').pop().trim().toLowerCase();
-      if (query.length > 0) {
-        const source = allUsers.length > 0 ? allUsers : (availableUsers || []).map(u => ({ 
-          userId: u.userId, 
-          userName: u.userName, 
-          userEmail: u.userEmail 
-        }));
-        const filtered = source.filter(user => {
-          const already = form.teamMembers.find(m => String(m.userId) === String(user.userId));
-          const name = (user.userName || '').toLowerCase();
-          const email = (user.userEmail || '').toLowerCase();
-          return !already && (name.includes(query) || email.includes(query));
-        });
-        setFilteredUsers(filtered);
-      } else {
-        setFilteredUsers([]);
-      }
-    } else {
-      setFilteredUsers([]);
-    }
+
+    if (!value.includes("@")) return setFilteredUsers([]);
+
+    const query = value.split("@").pop().toLowerCase();
+    const matches = allUsers.filter(
+      u =>
+        !form.teamMembers.some(m => String(m.userId) === String(u.userId)) &&
+        (u.userName.toLowerCase().includes(query) ||
+          u.userEmail.toLowerCase().includes(query))
+    );
+
+    setFilteredUsers(matches);
   };
 
-  const addTeamMember = (user) => {
-    setForm(prev => ({
-      ...prev,
-      teamMembers: [...prev.teamMembers, user]
-    }));
+  const addTeamMember = (user) =>
+  {
+    setForm({ ...form, teamMembers: [...form.teamMembers, user] });
     setUserInput("");
     setFilteredUsers([]);
   };
 
-  const removeTeamMember = (userId) => {
-    setForm(prev => ({
-      ...prev,
-      teamMembers: prev.teamMembers.filter(m => m.userId !== userId)
-    }));
+  const removeTeamMember = (id) =>
+  {
+    setForm({
+      ...form,
+      teamMembers: form.teamMembers.filter(m => m.userId !== id)
+    });
   };
 
-  const handleSubmit = async (e) => {
+  // Validation
+  const validate = () =>
+  {
+    const e = {};
+    if (!form.projectName.trim()) e.projectName = "Title required";
+    if (!form.projectDescription.trim()) e.projectDescription = "Description required";
+    if (!form.projectStartDate) e.projectStartDate = "Start date required";
+    if (!form.projectEndDate) e.projectEndDate = "End date required";
+    if (form.projectStartDate > form.projectEndDate) e.projectEndDate = "End date must be after start";
+
+    setErrors(e);
+    return Object.keys(e).length === 0;
+  };
+
+  // Submit
+  const handleSubmit = async (e) =>
+  {
     e.preventDefault();
-    
-    console.log("Submit clicked - Current form state:", form);
-    
-    if (isLoading) {
-      alert("Please wait for the form to finish loading...");
-      return;
-    }
-    
-    if (!validate()) {
-      console.log("Validation failed with errors:", errors);
-      return;
-    }
+    if (!validate()) return;
 
-    try {
-      // Log what we're about to send
-      console.log("Project ID:", project.projectId);
-      console.log("Form data before sending:", form);
-      
-      // Prepare the update data
-      const updatePayload = {
-        projectName: form.projectName,
-        projectDescription: form.projectDescription,
-        projectStartDate: form.projectStartDate,
-        projectEndDate: form.projectEndDate
-      };
+    const fd = new FormData();
+    fd.append("projectName", form.projectName);
+    fd.append("projectDescription", form.projectDescription);
+    fd.append("projectStartDate", form.projectStartDate);
+    fd.append("projectEndDate", form.projectEndDate);
 
-      console.log("Update payload being sent:", JSON.stringify(updatePayload, null, 2));
-      console.log("Field values:", {
-        projectName: `"${form.projectName}" (length: ${form.projectName?.length})`,
-        projectDescription: `"${form.projectDescription}" (length: ${form.projectDescription?.length})`,
-        projectStartDate: form.projectStartDate,
-        projectEndDate: form.projectEndDate
-      });
-      console.log("API URL:", `PUT /project/${project.projectId}`);
+    // MUST match backend name: formfile
+    if (form.file) fd.append("formfile", form.file);
 
-      // Call the update API
+    // MUST match backend name: UserIds
+    form.teamMembers.forEach((m, idx) =>
+    {
+      fd.append(`UserIds[${idx}]`, m.userId);
+    });
+
+    try
+    {
       const response = await apiConnector(
         "PUT",
         UPDATE_PROJECT(project.projectId),
-        updatePayload,
+        fd,
         {
           Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json'
+          "Content-Type": "multipart/form-data"
         }
       );
 
-      console.log("Update response:", response);
-
-      if (response && (response.status >= 200 && response.status < 300)) {
-        console.log("Project updated successfully");
-
-        // If parent provided callback, call it
-        if (onUpdateProject) {
-          await onUpdateProject(response.data?.project || response.data);
-        }
-
-        alert("Project updated successfully!");
-        if (onClose) onClose();
-      } else {
-        throw new Error("Unexpected response status: " + response?.status);
-      }
-    } catch (err) {
-      console.error("Update project failed", err);
-      console.error("Error response:", err.response);
-      console.error("Error response data:", err.response?.data);
-      console.error("Error response status:", err.response?.status);
-      
-      if (err.response?.status === 500) {
-        const confirmRefresh = window.confirm(
-          "There was a server error, but the project may have been updated. Would you like to refresh the page to check?"
-        );
-        if (confirmRefresh) {
-          window.location.reload();
-        }
-      } else if (err.response?.status === 400) {
-        // Show validation errors
-        const validationErrors = err.response?.data?.errors;
-        if (validationErrors) {
-          console.error("Validation errors:", validationErrors);
-          const errorMessages = Object.entries(validationErrors)
-            .map(([field, messages]) => `${field}: ${messages.join(', ')}`)
-            .join('\n');
-          alert(`Validation errors:\n${errorMessages}`);
-        } else {
-          alert(err.response?.data?.title || "Validation failed. Please check all required fields.");
-        }
-      }
-      
-      const errorMsg = err.response?.data?.message || err.response?.data?.title || err.message || "Failed to update project";
-      setErrors(prev => ({ ...prev, server: errorMsg }));
+      if (onUpdateProject) onUpdateProject(response.data);
+      onClose();
+    } catch (err)
+    {
+      console.log("Update failed", err);
+      alert(err.response?.data?.message || "Failed to update project");
     }
   };
+
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-      <div
-        className="relative bg-white rounded-lg border-2 border-black shadow-[8px_8px_0_rgba(0,0,0,0.9)] w-full max-w-xl max-h-[90vh] overflow-y-auto"
-        role="dialog"
-        aria-modal="true"
-      >
-        <div className="flex items-center justify-between p-6 sticky top-0 bg-white border-b border-gray-200">
-          <div>
-            <h2 className="text-2xl font-bold">Update Project</h2>
-            <p className="text-sm text-gray-500">Edit project details</p>
-          </div>
-          <button
-            onClick={onClose}
-            className="text-sm px-3 py-1 border border-gray-300 rounded hover:bg-gray-100"
-            aria-label="Close"
-          >
-            ✕
-          </button>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+      <div className="bg-white rounded-lg w-full max-w-xl p-6 shadow-lg">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-bold">Update Project</h2>
+          <button onClick={onClose}>✕</button>
         </div>
 
-        <form onSubmit={handleSubmit} className="px-6 pb-6">
-          {/* Debug Info - Remove in production */}
-          <div className="mb-4 p-3 bg-gray-100 rounded text-xs">
-            <strong>Debug Info:</strong>
-            <div>Form State: {JSON.stringify({
-              projectName: form.projectName,
-              projectDescription: form.projectDescription,
-              startDate: form.projectStartDate,
-              endDate: form.projectEndDate
-            })}</div>
-            <div>Loading: {isLoading ? 'Yes' : 'No'}</div>
-          </div>
-
+        <form onSubmit={handleSubmit}>
           <label className="block mb-3">
-            <span className="text-sm font-medium">Title</span>
+            Title
             <input
               name="projectName"
               value={form.projectName}
               onChange={handleChange}
-              className={`mt-1 block w-full rounded-md border px-3 py-2 focus:outline-none ${
-                errors.projectName ? "border-red-500" : "border-gray-300"
-              }`}
-              placeholder="E-Commerce Website"
+              className="w-full border p-2 rounded"
             />
-            {errors.projectName && <p className="text-xs text-red-600 mt-1">{errors.projectName}</p>}
+            {errors.projectName && <p className="text-red-500 text-sm">{errors.projectName}</p>}
           </label>
 
           <label className="block mb-3">
-            <span className="text-sm font-medium">Description</span>
+            Description
             <textarea
               name="projectDescription"
               value={form.projectDescription}
               onChange={handleChange}
-              rows={4}
-              className={`mt-1 block w-full rounded-md border px-3 py-2 focus:outline-none ${
-                errors.projectDescription ? "border-red-500" : "border-gray-300"
-              }`}
-              placeholder="Build a modern e-commerce platform with React and .NET"
+              className="w-full border p-2 rounded"
             />
-            {errors.projectDescription && <p className="text-xs text-red-600 mt-1">{errors.projectDescription}</p>}
+            {errors.projectDescription && <p className="text-red-500 text-sm">{errors.projectDescription}</p>}
           </label>
 
           <div className="grid grid-cols-2 gap-4 mb-3">
-            <label className="block">
-              <span className="text-sm font-medium">Start date</span>
+            <label>
+              Start Date
               <input
                 type="date"
                 name="projectStartDate"
                 value={form.projectStartDate}
                 onChange={handleChange}
-                className={`mt-1 block w-full rounded-md border px-3 py-2 focus:outline-none ${
-                  errors.projectStartDate ? "border-red-500" : "border-gray-300"
-                }`}
+                className="w-full border p-2 rounded"
               />
-              {errors.projectStartDate && <p className="text-xs text-red-600 mt-1">{errors.projectStartDate}</p>}
             </label>
 
-            <label className="block">
-              <span className="text-sm font-medium">End date</span>
+            <label>
+              End Date
               <input
                 type="date"
                 name="projectEndDate"
                 value={form.projectEndDate}
                 onChange={handleChange}
-                className={`mt-1 block w-full rounded-md border px-3 py-2 focus:outline-none ${
-                  errors.projectEndDate ? "border-red-500" : "border-gray-300"
-                }`}
+                className="w-full border p-2 rounded"
               />
-              {errors.projectEndDate && <p className="text-xs text-red-600 mt-1">{errors.projectEndDate}</p>}
             </label>
           </div>
 
-          <label className="block mb-4">
-            <span className="text-sm font-medium">Attachment (optional)</span>
+          <label className="block mb-3">
+            Attachment
+            <input type="file" accept="image/*,application/pdf" onChange={handleFileChange} />
+            {filePreview && <img src={filePreview} className="mt-2 max-h-40 rounded" />}
+          </label>
+
+          <label className="block mb-3">
+            Team Members
             <input
-              type="file"
-              accept="image/*,application/pdf"
-              onChange={handleFileChange}
-              className="mt-1 block w-full"
-            />
-            {errors.file && <p className="text-xs text-red-600 mt-1">{errors.file}</p>}
+              value={userInput}
+              onChange={handleUserInputChange}
+              placeholder="Type @ to search"
+              className="w-full border p-2 rounded"
+            /> 
 
-            {filePreview && (
-              <div className="mt-3">
-                <img src={filePreview} alt="preview" className="max-h-40 rounded border" />
+           {filteredUsers.length > 0 && (
+              <div className="border rounded mt-1 bg-white shadow">
+                {filteredUsers.map(u => (
+                  <div
+                    key={u.userId}
+                    className="p-2 hover:bg-gray-100 cursor-pointer"
+                    onClick={() => addTeamMember(u)}
+                  >
+                    {u.userName} ({u.userEmail})
+                  </div>
+                ))}
               </div>
             )}
-          </label>
 
-          {/* Team Members */}
-          <label className="block mb-4">
-            <span className="text-sm font-medium">Team Members</span>
-            <div className="relative mt-1">
-              <input
-                type="text"
-                value={userInput}
-                onChange={handleUserInputChange}
-                placeholder="Type @ to search and add team members..."
-                className="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none"
-              />
-              {filteredUsers.length > 0 && (
-                <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-300 rounded-md shadow-lg z-10 max-h-40 overflow-y-auto">
-                  {filteredUsers.map(user => (
-                    <div
-                      key={user.userId}
-                      onClick={() => addTeamMember(user)}
-                      className="px-3 py-2 hover:bg-gray-100 cursor-pointer text-sm"
-                    >
-                      <div className="font-medium text-gray-800">{user.userName}</div>
-                      <div className="text-xs text-gray-500">{user.userEmail}</div>
-                    </div>
-                  ))}
+            <div className="flex flex-wrap gap-2 mt-3">
+              {form.teamMembers.map(m => (
+                <div key={m.userId} className="bg-blue-100 px-3 py-1 rounded-full flex items-center gap-2">
+                  {m.userName}
+                  <X onClick={() => removeTeamMember(m.userId)} className="cursor-pointer" />
                 </div>
-              )}
-            </div>
-            
-            {/* Selected Team Members */}
-            {form.teamMembers && form.teamMembers.length > 0 ? (
-              <div className="mt-3 flex flex-wrap gap-2">
-                {form.teamMembers.map((member, index) => {
-                  console.log('Rendering team member:', member);
-                  return (
-                    <div
-                      key={member.userId || index}
-                      className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm flex items-center gap-2"
-                    >
-                      <span>{member.userName || member.name || 'Unknown User'}</span>
-                      <button
-                        type="button"
-                        onClick={() => removeTeamMember(member.userId)}
-                        className="hover:text-blue-900 cursor-pointer"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="mt-3 text-sm text-gray-500">
-                No team members assigned yet. Type @ to search and add members.
-              </div>
-            )}
+              ))}
+            </div> 
           </label>
 
-          {errors.server && <p className="text-sm text-red-600 mb-3">{errors.server}</p>}
-
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <button
-                type="submit"
-                disabled={isLoading}
-                style={{ cursor: isLoading ? 'not-allowed' : 'pointer' }}
-                className={`px-6 py-2 rounded-md font-medium shadow-sm ${
-                  isLoading 
-                    ? 'bg-gray-400 text-gray-200 cursor-not-allowed' 
-                    : 'bg-black text-white hover:bg-gray-800'
-                }`}
-              >
-                {isLoading ? 'Loading...' : 'Update'}
-              </button>
-              <button
-                type="button"
-                onClick={onClose}
-                className="ml-3 px-4 py-2 rounded-md border border-gray-300 hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
+          <button type="submit" className="bg-black text-white px-6 py-2 rounded">
+            Update
+          </button>
         </form>
       </div>
     </div>

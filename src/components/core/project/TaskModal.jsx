@@ -4,13 +4,13 @@ import { useSelector } from 'react-redux';
 import { getAllUser } from '../../../services/operations/authAPI';
 import { X } from 'lucide-react';
 
-export default function TaskModal({ isOpen, onClose, onCreateTask, projectId, availableUsers = [] })
-{
+export default function TaskModal({ isOpen, onClose, onCreateTask, projectId, availableUsers = [] }) {
   const [form, setForm] = useState({
     projectId: projectId,
     taskTitle: "",
     taskDescription: "",
     taskPriority: 1,
+    taskStatus: 0, // REQUIRED by backend DTO
     taskDueDate: "",
     assignedUser: null,
     file: null
@@ -22,15 +22,14 @@ export default function TaskModal({ isOpen, onClose, onCreateTask, projectId, av
   const searchTimeout = useRef(null);
   const { token } = useSelector((state) => state.auth || {});
 
-  useEffect(() =>
-  {
-    if (isOpen)
-    {
+  useEffect(() => {
+    if (isOpen) {
       setForm({
         projectId,
         taskTitle: "",
         taskDescription: "",
         taskPriority: 1,
+        taskStatus: 0,
         taskDueDate: "",
         assignedUser: null,
         file: null
@@ -41,8 +40,7 @@ export default function TaskModal({ isOpen, onClose, onCreateTask, projectId, av
     }
   }, [isOpen]);
 
-  const validate = () =>
-  {
+  const validate = () => {
     const e = {};
     if (!form.taskTitle.trim()) e.taskTitle = "Task title is required";
     if (!form.taskDescription.trim()) e.taskDescription = "Task description is required";
@@ -52,23 +50,20 @@ export default function TaskModal({ isOpen, onClose, onCreateTask, projectId, av
     return Object.keys(e).length === 0;
   };
 
-  const handleChange = (e) =>
-  {
+  const handleChange = (e) => {
     const { name, value } = e.target;
     setForm(prev => ({ ...prev, [name]: value }));
     setErrors(prev => ({ ...prev, [name]: undefined }));
   };
 
-  const handleUserInputChange = (e) =>
-  {
+  const handleUserInputChange = (e) => {
     const value = e.target.value;
     setUserInput(value);
 
     if (searchTimeout.current) clearTimeout(searchTimeout.current);
-    searchTimeout.current = setTimeout(async () =>
-    {
-      if (!value.trim())
-      {
+
+    searchTimeout.current = setTimeout(async () => {
+      if (!value.trim()) {
         setFilteredUsers([]);
         return;
       }
@@ -81,8 +76,7 @@ export default function TaskModal({ isOpen, onClose, onCreateTask, projectId, av
           user.userEmail?.toLowerCase().includes(q))
       );
 
-      try
-      {
+      try {
         const resp = await getAllUser({ token })();
         const all = Array.isArray(resp) ? resp : [];
 
@@ -101,67 +95,52 @@ export default function TaskModal({ isOpen, onClose, onCreateTask, projectId, av
         );
 
         setFilteredUsers(merged.slice(0, 50));
-      } catch (err)
-      {
-        console.error('Failed to fetch users for assignment', err);
+      } catch (err) {
+        console.error('Failed to fetch users', err);
         setFilteredUsers(localMatches.slice(0, 50));
       }
     }, 300);
   };
 
-  const addAssignedUser = (user) =>
-  {
+  const addAssignedUser = (user) => {
     setForm(prev => ({ ...prev, assignedUser: user }));
     setUserInput("");
     setFilteredUsers([]);
   };
 
-  const removeAssignedUser = () =>
-  {
+  const removeAssignedUser = () => {
     setForm(prev => ({ ...prev, assignedUser: null }));
   };
 
-  const handleFileChange = (e) =>
-  {
+  const handleFileChange = (e) => {
     setForm(prev => ({ ...prev, file: e.target.files[0] }));
   };
 
-
-  const handleSubmit = async (e) =>
-  {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!validate()) return;
 
-    const dto = {
-      projectId,
-      taskTitle: form.taskTitle,
-      taskDescription: form.taskDescription,
-      taskPriority: Number(form.taskPriority),
-      taskDueDate: form.taskDueDate,
-      assignedUsers: form.assignedUser ? [form.assignedUser.userId] : []
-    };
-
     const payload = new FormData();
-    // if (form.file) {
+
     payload.append("projectId", projectId);
-    payload.append("file", form.file);
-    payload.append("taskTitle", dto.taskTitle);
-    payload.append("taskDescription", dto.taskDescription)
-    payload.append("taskPriority", dto.taskPriority);
-    payload.append("taskDueDate", dto.taskDueDate)
-    dto.assignedUsers.forEach(id =>
-    {
-      payload.append("assignedUsers", id);
-    });
+    payload.append("taskTitle", form.taskTitle);
+    payload.append("taskDescription", form.taskDescription);
+    payload.append("taskPriority", Number(form.taskPriority));
+    payload.append("taskStatus", Number(form.taskStatus)); // REQUIRED
+    payload.append("taskDueDate", form.taskDueDate);
 
-    // }
+    if (form.assignedUser) {
+      payload.append("userId", form.assignedUser.userId);
+    }
 
-    try
-    {
+    if (form.file) {
+      payload.append("fileForm", form.file); // must match backend DTO
+    }
+
+    try {
       await onCreateTask(payload);
       onClose();
-    } catch (err)
-    {
+    } catch (err) {
       console.error("Create task failed", err);
       setErrors(prev => ({ ...prev, server: err.message || "Create failed" }));
     }
@@ -171,9 +150,8 @@ export default function TaskModal({ isOpen, onClose, onCreateTask, projectId, av
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-      <div className="relative bg-white rounded-lg border-2 border-black shadow-lg w-full max-w-xl max-h-[90vh] overflow-y-auto">
+      <div className="relative bg-white rounded-lg border-2 border-black shadow-lg w-full max-w-xl max-height-[90vh] overflow-y-auto">
 
-        {/* Header */}
         <div className="flex justify-between items-center p-6 border-b bg-white sticky top-0">
           <h2 className="text-2xl font-bold">Create Task</h2>
           <button onClick={onClose} className="text-xl px-3 py-1 hover:bg-gray-200 rounded">✕</button>
@@ -181,7 +159,6 @@ export default function TaskModal({ isOpen, onClose, onCreateTask, projectId, av
 
         <form onSubmit={handleSubmit} className="px-6 pb-6">
 
-          {/* Title */}
           <label className="block mb-3">
             <span className="font-medium">Task Title</span>
             <input
@@ -194,7 +171,6 @@ export default function TaskModal({ isOpen, onClose, onCreateTask, projectId, av
             {errors.taskTitle && <p className="text-red-500 text-xs">{errors.taskTitle}</p>}
           </label>
 
-          {/* Description */}
           <label className="block mb-3">
             <span className="font-medium">Description</span>
             <textarea
@@ -202,8 +178,7 @@ export default function TaskModal({ isOpen, onClose, onCreateTask, projectId, av
               rows={4}
               value={form.taskDescription}
               onChange={handleChange}
-              className={`mt-1 w-full px-3 py-2 border rounded ${errors.taskDescription ? "border-red-500" : "border-gray-300"
-                }`}
+              className={`mt-1 w-full px-3 py-2 border rounded ${errors.taskDescription ? "border-red-500" : "border-gray-300"}`}
               placeholder="Describe the task..."
             />
             {errors.taskDescription && <p className="text-red-500 text-xs">{errors.taskDescription}</p>}
@@ -211,7 +186,6 @@ export default function TaskModal({ isOpen, onClose, onCreateTask, projectId, av
 
           <div className="grid grid-cols-2 gap-4">
 
-            {/* Priority */}
             <label>
               <span className="font-medium">Priority</span>
               <select
@@ -226,7 +200,6 @@ export default function TaskModal({ isOpen, onClose, onCreateTask, projectId, av
               </select>
             </label>
 
-            {/* Due Date */}
             <label>
               <span className="font-medium">Due Date</span>
               <input
@@ -234,15 +207,13 @@ export default function TaskModal({ isOpen, onClose, onCreateTask, projectId, av
                 name="taskDueDate"
                 value={form.taskDueDate}
                 onChange={handleChange}
-                className={`mt-1 w-full px-3 py-2 border rounded ${errors.taskDueDate ? "border-red-500" : "border-gray-300"
-                  }`}
+                className={`mt-1 w-full px-3 py-2 border rounded ${errors.taskDueDate ? "border-red-500" : "border-gray-300"}`}
               />
               {errors.taskDueDate && <p className="text-red-500 text-xs">{errors.taskDueDate}</p>}
             </label>
 
           </div>
 
-          {/* Assign User */}
           <label className="block mb-3">
             <span className="font-medium">Assign User</span>
             <input
@@ -253,7 +224,6 @@ export default function TaskModal({ isOpen, onClose, onCreateTask, projectId, av
               placeholder="Search user..."
             />
 
-            {/* Dropdown */}
             {filteredUsers.length > 0 && (
               <div className="border bg-white mt-1 rounded shadow max-h-40 overflow-y-auto">
                 {filteredUsers.map(u => (
@@ -282,19 +252,17 @@ export default function TaskModal({ isOpen, onClose, onCreateTask, projectId, av
             {errors.assignedUser && <p className="text-red-500 text-xs">{errors.assignedUser}</p>}
           </label>
 
-          {/* File */}
           <label className="block mb-3">
             <span className="font-medium">Attach File</span>
             <input
               type="file"
-              name="file"
+              name="fileForm"
               onChange={handleFileChange}
               className="mt-1 w-full px-3 py-2 border rounded"
             />
             {form.file && <p className="text-xs text-gray-600">Selected: {form.file.name}</p>}
           </label>
 
-          {/* Submit Buttons */}
           <div className="flex justify-between">
             <button className="bg-black text-white px-6 py-2 rounded">Create Task</button>
             <button type="button" onClick={onClose} className="border px-4 py-2 rounded">Cancel</button>

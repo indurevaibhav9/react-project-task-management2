@@ -1,6 +1,8 @@
 // TaskComments.jsx
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import Comment from "./Comment";
+import { useSelector } from "react-redux";
+import TaskUpdateModal from "./TaskUpdateModel";
 
 /**
  * Props:
@@ -17,7 +19,8 @@ import Comment from "./Comment";
  * NOTE: the final upload endpoint name is guessed from your description ("cmdId, file").
  * If your backend expects a different route, replace the upload URL accordingly.
  */
-export default function TaskComments({ isOpen, onClose, taskId, currentUserId = null }) {
+export default function TaskComments({ isOpen, onClose, taskId, currentUserId = null })
+{
   const [loading, setLoading] = useState(false);
   const [task, setTask] = useState(null);
   const [comments, setComments] = useState([]);
@@ -25,71 +28,151 @@ export default function TaskComments({ isOpen, onClose, taskId, currentUserId = 
   const [newFile, setNewFile] = useState(null);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const { token } = useSelector((state) => state.auth)
+  const fileInputRef = useRef(null);
+  const [deletedComment, setDeletedComment] = useState(true);
+  const [allUsers, setAllUsers] = useState([]);
+  const [selectedUserForAttach, setSelectedUserForAttach] = useState("");
+  const [showUpdateModal, setShowUpdateModal] = useState(false);
 
   // Fetch task + comments when modal opens or taskId changes
-  useEffect(() => {
+  useEffect(() =>
+  {
+    // Fetch all users for attach user
+    const fetchUsers = async () =>
+    {
+      try
+      {
+        const res = await fetch("https://localhost:7228/api/Auth/GetAllUsers", {
+          method: "GET",
+          headers: {
+            "Authorization": `Bearer ${token}`
+          }
+        });
+
+        if (!res.ok) throw new Error("Failed to fetch users");
+
+        const data = await res.json();
+        setAllUsers(data);
+      } catch (err)
+      {
+        console.error(err);
+      }
+    };
+
+    fetchUsers();
+
     if (!isOpen || !taskId) return;
 
-    const fetchTask = async () => {
+    const fetchTask = async () =>
+    {
       setLoading(true);
       setError("");
-      try {
-        const res = await fetch(`https://localhost:7228/api/projecttask/${taskId}`);
+      try
+      {
+        const res = await fetch(`https://localhost:7228/api/ProjectTask/${taskId}`, {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`
+          }
+        });
+
         if (!res.ok) throw new Error(`Failed to fetch task (${res.status})`);
         const data = await res.json();
         setTask(data);
         // ensure comments is an array
         setComments(Array.isArray(data.comments) ? data.comments : []);
-      } catch (err) {
+      } catch (err)
+      {
         console.error(err);
         setError("Failed to load task. Check console for details.");
-      } finally {
+      } finally
+      {
         setLoading(false);
       }
     };
 
     fetchTask();
-  }, [isOpen, taskId]);
+  }, [isOpen, taskId, deletedComment]);
 
   // file input change
-  const handleFileChange = (e) => {
+  const handleFileChange = (e) =>
+  {
     const f = e.target.files[0];
     setNewFile(f || null);
   };
 
   // submit comment: 1) POST create comment 2) if file -> upload file for that comment
-  const handleSubmit = async (e) => {
+  const handleDeleteComment = async (commentId) =>
+  {
+    if (!commentId) return;
+
+    try
+    {
+      const res = await fetch(`https://localhost:7228/api/Comment/${commentId}`, {
+        method: "DELETE",
+        headers: {
+          "Authorization": `Bearer ${token}`
+        }
+      });
+
+      if (!res.ok) throw new Error("Delete failed");
+
+      // Remove comment locally (fast UI)
+      setComments(prev => prev.filter(c => c.commentId !== commentId));
+
+    } catch (err)
+    {
+      console.error(err);
+    }
+  };
+
+  const handleSubmit = async (e) =>
+  {
     e?.preventDefault();
-    if (!newMessage?.trim() && !newFile) {
+    if (!newMessage?.trim() && !newFile)
+    {
       setError("Please enter a message or attach a file.");
       return;
     }
     setSubmitting(true);
     setError("");
 
-    try {
+    try
+    {
       // 1) Create comment DTO
       const createDto = {
         taskId: taskId,
         userId: currentUserId ?? null, // adapt: may require a real user id
         commentMessage: newMessage || ""
       };
-
-      const res = await fetch(`https://localhost:7228/api/comment`, {
+      const createCommentData = new FormData();
+      createCommentData.append("taskId", taskId);
+      createCommentData.append("userId", currentUserId || null);
+      createCommentData.append("commentMessage", newMessage || "");
+      createCommentData.append("commentFileForm", newFile);
+      if (newFile)
+      {
+        console.log("file present : " + newFile);
+      }
+      const res = await fetch(`https://localhost:7228/api/Comment`, {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
-          // if you need auth: "Authorization": `Bearer ${token}`,
+          // "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
         },
-        body: JSON.stringify(createDto)
+        body: createCommentData
       });
 
-      if (!res.ok) {
+      if (!res.ok)
+      {
         const txt = await res.text();
         throw new Error(`Create comment failed: ${res.status} ${txt}`);
       }
 
       const created = await res.json();
+      console.log(created);
       // created should contain commentId, commentCreatedAt, etc
       // Add optimistic comment to UI (add created object)
       const newCmt = {
@@ -99,45 +182,80 @@ export default function TaskComments({ isOpen, onClose, taskId, currentUserId = 
         file: created.file ?? null
       };
 
-      // If file attached -> upload file in second call
-      if (newFile) {
-        try {
-          const form = new FormData();
-          form.append("file", newFile);
 
-          // guessed endpoint: change to your actual upload route
-          const uploadRes = await fetch(`https://localhost:7228/api/comment/${created.commentId}/file`, {
-            method: "POST",
-            // DO NOT set Content-Type (browser sets multipart boundary automatically)
-            body: form
-          });
-
-          if (!uploadRes.ok) {
-            const t = await uploadRes.text();
-            console.warn("File upload failed:", uploadRes.status, t);
-            // optionally set a flag on comment that file upload failed
-          } else {
-            const uploaded = await uploadRes.json();
-            // uploaded should contain file info; attach to comment
-            newCmt.file = uploaded; // adapt based on your API response shape
-          }
-        } catch (uf) {
-          console.error("Upload error", uf);
-        }
-      }
 
       // append to comments list and clear inputs
       setComments((prev) => [newCmt, ...prev]);
       setNewMessage("");
       setNewFile(null);
+      if (fileInputRef.current)
+      {
+        fileInputRef.current.value = "";
+      }
 
-    } catch (err) {
+    } catch (err)
+    {
       console.error(err);
       setError(err.message || "Failed to create comment");
-    } finally {
+    } finally
+    {
       setSubmitting(false);
     }
   };
+  const handleAttachUser = async () =>
+  {
+    if (!selectedUserForAttach) return;
+
+    try
+    {
+      const res = await fetch(
+        `https://localhost:7228/api/projecttask/${taskId}/attach-user/${selectedUserForAttach}`,
+        {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${token}`
+          }
+        }
+      );
+
+      if (!res.ok) throw new Error("Attach user failed");
+
+      await res.json();
+
+      // Refresh task
+      setDeletedComment(prev => !prev);
+      setSelectedUserForAttach("");
+    } catch (err)
+    {
+      console.error(err);
+    }
+  };
+  const handleDetachUser = async () =>
+  {
+    try
+    {
+      const res = await fetch(
+        `https://localhost:7228/api/projecttask/${taskId}/detach-user`,
+        {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${token}`
+          }
+        }
+      );
+
+      if (!res.ok) throw new Error("Detach user failed");
+
+      await res.json();
+
+      // Refresh task
+      setDeletedComment(prev => !prev);
+    } catch (err)
+    {
+      console.error(err);
+    }
+  };
+
 
   if (!isOpen) return null;
 
@@ -148,10 +266,18 @@ export default function TaskComments({ isOpen, onClose, taskId, currentUserId = 
         <div className="flex items-start justify-between p-6 border-b">
           <div>
             <h2 className="text-2xl font-bold">Task Details</h2>
+
             <p className="text-sm text-gray-500">
               {task ? `${task.taskTitle ?? ""}` : "Loading..."}
             </p>
           </div>
+          <button
+            onClick={() => setShowUpdateModal(true)}
+            className="text-sm px-3 py-1 border border-blue-500 text-blue-600 rounded hover:bg-blue-100"
+          >
+            Update Task
+          </button>
+
           <div className="flex gap-2 items-start">
             <button
               onClick={() => onClose?.()}
@@ -173,10 +299,16 @@ export default function TaskComments({ isOpen, onClose, taskId, currentUserId = 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-1">
                 <div className="text-xs text-gray-500">Title</div>
-                <div className="text-sm font-medium">{task.taskTitle}</div>
+                <div className="text-sm font-medium">{task.taskTitle} (ID: {task.taskId})</div>
 
-                <div className="text-xs text-gray-500 mt-2">Priority / Status</div>
-                <div className="text-sm">{String(task.taskPriority)} / {String(task.taskStatus)}</div>
+                <div className="text-xs text-gray-500 mt-2">Priority </div>
+                <div className="text-sm">{task.taskPriority == 0 ? "Low" : task.taskPriority == 1 ? "Medium" : "High"}</div>
+
+                <div className="text-xs text-gray-500">Assigned User</div>
+                <div className="text-sm font-medium">Id: {task.userId}, {task.user?.userName}, {task.user?.userEmail}</div>
+
+                <div className="text-xs text-gray-500">Task Status</div>
+                <div className="text-sm font-medium">{task.taskStatus == 0 ? "Open" : task.taskStatus == 1 ? "In Progress" : "Closed"}</div>
               </div>
 
               <div className="space-y-1">
@@ -185,12 +317,181 @@ export default function TaskComments({ isOpen, onClose, taskId, currentUserId = 
 
                 <div className="text-xs text-gray-500 mt-2">Project</div>
                 <div className="text-sm">{task.project?.projectName ?? "-"}</div>
-              </div>
 
-              <div className="md:col-span-2">
                 <div className="text-xs text-gray-500">Description</div>
                 <div className="text-sm whitespace-pre-wrap">{task.taskDescription}</div>
+
+
               </div>
+              <div>
+                {/* Attach / Detach User */}
+                <div className="mt-4 p-4 border rounded-md bg-gray-50">
+                  <h3 className="text-md font-semibold mb-2">Task User</h3>
+
+                  {/* Current assigned user */}
+                  {task?.user ? (
+                    <div className="mb-3 text-sm">
+                      <p className="font-medium">Assigned User:</p>
+                      <p>{task.user.userName} ({task.user.userEmail})</p>
+
+                      <button
+                        onClick={handleDetachUser}
+                        className="mt-2 px-3 py-1 bg-red-600 text-white rounded"
+                      >
+                        Detach User
+                      </button>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-gray-500 mb-3">No user assigned</p>
+                  )}
+
+                  {/* User dropdown */}
+                  <select
+                    className="border px-3 py-2 rounded w-full"
+                    value={selectedUserForAttach}
+                    onChange={(e) => setSelectedUserForAttach(e.target.value)}
+                  >
+                    <option value="">Select User to Attach</option>
+                    {allUsers.map((u) => (
+                      <option key={u.userId} value={u.userId}>
+                        {u.userName} ({u.userEmail})
+                      </option>
+                    ))}
+                  </select>
+
+                  {/* Attach Button */}
+                  <button
+                    onClick={handleAttachUser}
+                    className="mt-3 px-4 py-2 bg-blue-600 text-white rounded"
+                    disabled={!selectedUserForAttach}
+                  >
+                    Attach User
+                  </button>
+                </div>
+
+              </div>
+              <div className="md:col-span-2 space-y-4">
+
+                {/* ATTACHED TASK FILE */}
+                <div>
+                  <div className="text-xs text-gray-500">Attached File</div>
+
+                  {task?.file ? (
+                    <div className="flex items-center gap-3 mt-1">
+                      <a
+                        href={task.file.fileURL}
+                        target="_blank"
+                        className="text-blue-600 underline"
+                      >
+                        {task.file.fileName}
+                      </a>
+
+                      {/* Detach File Button */}
+                      <button
+                        onClick={async () =>
+                        {
+                          try
+                          {
+                            const res = await fetch(
+                              `https://localhost:7228/api/projecttask/${taskId}/detach-file`,
+                              {
+                                method: "POST",
+                                headers: {
+                                  Authorization: `Bearer ${token}`,
+                                },
+                              }
+                            );
+
+                            if (!res.ok) throw new Error("Failed to detach file");
+
+                            // remove file from UI
+                            setTask(prev => ({ ...prev, file: null }));
+                          } catch (err)
+                          {
+                            console.error(err);
+                            alert("Error detaching file");
+                          }
+                        }}
+                        className="px-3 py-1 text-sm bg-red-600 text-white rounded"
+                      >
+                        Detach File
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-3 mt-1">
+
+                      {/* Choose File Input */}
+                      <input
+                        type="file"
+                        onChange={(e) => setNewFile(e.target.files[0] || null)}
+                      />
+
+                      {/* Attach File Button */}
+                      <button
+                        onClick={async () =>
+                        {
+                          if (!newFile)
+                          {
+                            alert("Please select a file first.");
+                            return;
+                          }
+
+                          try
+                          {
+                            // Step 1: Upload file
+                            const fd = new FormData();
+                            fd.append("file", newFile);
+
+                            const uploadRes = await fetch(
+                              "https://localhost:7228/api/file/upload",
+                              {
+                                method: "POST",
+                                headers: {
+                                  Authorization: `Bearer ${token}`,
+                                },
+                                body: fd,
+                              }
+                            );
+
+                            if (!uploadRes.ok) throw new Error("File upload failed");
+                            const fileData = await uploadRes.json(); // { fileId, fileName, fileURL }
+
+                            // Step 2: Attach uploaded file to task
+                            const attachRes = await fetch(
+                              `https://localhost:7228/api/projecttask/${taskId}/attach-file/${fileData.fileId}`,
+                              {
+                                method: "POST",
+                                headers: {
+                                  Authorization: `Bearer ${token}`,
+                                },
+                              }
+                            );
+
+                            if (!attachRes.ok) throw new Error("Attach file failed");
+
+                            // Update UI
+                            setTask(prev => ({
+                              ...prev,
+                              file: fileData
+                            }));
+
+                            setNewFile(null);
+                          } catch (err)
+                          {
+                            console.error(err);
+                            alert("Error attaching file");
+                          }
+                        }}
+                        className="px-3 py-1 text-sm bg-green-600 text-white rounded"
+                      >
+                        Attach File
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+              </div>
+
             </div>
           ) : (
             <div className="text-sm text-gray-500">No task data.</div>
@@ -210,7 +511,7 @@ export default function TaskComments({ isOpen, onClose, taskId, currentUserId = 
             </label>
 
             <div className="flex items-center gap-3">
-              <input type="file" onChange={handleFileChange} />
+              <input type="file" ref={fileInputRef} onChange={handleFileChange} />
               <div className="flex-1 text-sm text-gray-500">Attach a file (optional)</div>
 
               <button
@@ -232,13 +533,26 @@ export default function TaskComments({ isOpen, onClose, taskId, currentUserId = 
                 <div className="text-gray-600">No comments yet.</div>
               ) : (
                 comments.map((c) => (
-                  <Comment key={c.commentId ?? `${c.taskId}-${Math.random()}`} comment={c} currentUserId={currentUserId} />
+                  <Comment onDelete={handleDeleteComment} key={c.commentId ?? `${c.taskId}-${Math.random()}`} comment={c} currentUserId={currentUserId} />
                 ))
               )}
             </div>
           </div>
         </div>
       </div>
+      {showUpdateModal && (
+        <TaskUpdateModal
+          task={task}
+          token={token}
+          onClose={() => setShowUpdateModal(false)}
+          onUpdated={() =>
+          {
+            setDeletedComment(p => !p); // refresh task
+            setShowUpdateModal(false);
+          }}
+        />
+      )}
+
     </div>
   );
 }

@@ -240,7 +240,7 @@ const KanbanBoard = forwardRef(({ tasksArray,setIsTaskModalOpen}, ref) => {
     console.log("Update Kanban clicked");
     const changedTasksBody = getChangedTasks();
     try {
-      await updateTasksStatus({body:changedTasksBody})();
+      await updateTasksStatus({body:changedTasksBody, token})();
       // Optionally update originalTasks to reflect new state after successful update
       setOriginalTasks(tasks.map(t => ({ ...t })));
     } catch (err) {

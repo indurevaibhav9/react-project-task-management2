@@ -21,24 +21,28 @@ import Tasks from './components/core/dashboard/Tasks'
 import ActiveLogs from './components/core/dashboard/ActiveLogs'
 import LogOut from './pages/LogOut'
 
-function App() {
+function App()
+{
   // const dispatch = useDispatch();
   // const navigate = useNavigate();
-  useEffect(() => {
-    if (localStorage.getItem("token")) {
+  useEffect(() =>
+  {
+    if (localStorage.getItem("token"))
+    {
       const token = JSON.parse(localStorage.getItem("token"))
     }
   }, [])
 
   return (
-    <div className='h-screen w-screen bg-[#d1d0d0] text-black'> 
-      <Navbar/>
+    <div className='h-screen w-screen bg-[#d1d0d0] text-black'>
+      <Navbar />
       {/* <Loading/> */}
-      <Routes>
+      <div className='mt-20'>
+        <Routes >
           <Route path="/" element={<Home />} />
-          <Route path="/login" element={<LogIn/>}></Route>
-          <Route path="/register" element={<Register/>}></Route>
-          <Route path="/forgot-password" element={<ForgotPassword/>}></Route>
+          <Route path="/login" element={<LogIn />}></Route>
+          <Route path="/register" element={<Register />}></Route>
+          <Route path="/forgot-password" element={<ForgotPassword />}></Route>
           <Route path="/about" element={<About />} />
           <Route path="/contact-us" element={<ContactUs />} />
           <Route
@@ -58,7 +62,9 @@ function App() {
             <Route path="log-out" element={<LogOut />} />
             {/* <Route path="my-projects" element={<MyProjects/>} /> */}
           </Route>
-      </Routes>
+        </Routes>
+      </div>
+
     </div>
   )
 }
