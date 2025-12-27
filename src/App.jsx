@@ -20,6 +20,7 @@ import ProjectsView from './pages/ProjectsView'
 import Tasks from './components/core/dashboard/Tasks'
 import ActiveLogs from './components/core/dashboard/ActiveLogs'
 import LogOut from './pages/LogOut'
+import Notification from './components/Notification'
 
 function App()
 {
@@ -60,6 +61,7 @@ function App()
             <Route path="tasks" element={<Tasks />} />
             <Route path="active-logs" element={<ActiveLogs />} />
             <Route path="log-out" element={<LogOut />} />
+            <Route path="notifications" element={<Notification />} />
             {/* <Route path="my-projects" element={<MyProjects/>} /> */}
           </Route>
         </Routes>

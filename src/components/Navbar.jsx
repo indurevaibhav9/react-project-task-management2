@@ -28,6 +28,7 @@ const Navbar = () =>
           token && (
             <>
               <Link to="/dashboard/my-profile" className={`mx-4 text-lg font-medium p-2 border rounded-lg hover:bg-black hover:border-gray-400 hover:text-white`}>Dashboard</Link>
+              <Link to="/dashboard/notifications" className={`mx-4 text-lg font-medium p-2 border rounded-lg hover:bg-black hover:border-gray-400 hover:text-white`}>Notifications</Link>
             </>
           )
         }
